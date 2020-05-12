@@ -1,4 +1,4 @@
-This is a log of my activities during the Google Summer of Code 2020 with Arduino
+This is a log of my activities during the Google Summer of Code 2020 with Arduino.
 
 * Week 1:
  May 4, 2020    Selected Students announced.

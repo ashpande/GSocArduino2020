@@ -18,3 +18,5 @@ scanner.l contains the following tokens:
 ## Pull Requests
 
 https://github.com/arduino/ArduinoCore-samd/pull/533
+
+https://github.com/arduino/ArduinoCore-avr/pull/350

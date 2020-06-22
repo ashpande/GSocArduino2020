@@ -14,3 +14,7 @@ scanner.l contains the following tokens:
 - Blank spaces, newlines
 - punctuators, operators
 - Anything else is recognised as an error (As of now)
+
+## Pull Requests
+
+https://github.com/arduino/ArduinoCore-samd/pull/533

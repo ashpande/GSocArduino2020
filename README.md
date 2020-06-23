@@ -24,3 +24,6 @@ https://github.com/arduino/ArduinoCore-avr/pull/350
 https://github.com/arduino/reference-en/pull/749
 
 https://github.com/arduino/reference-en/pull/750
+
+https://github.com/arduino/reference-en/pull/751
+

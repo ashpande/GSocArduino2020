@@ -27,3 +27,4 @@ Went through Arduino Language Reference.
 |May 24, 2020 | https://www.arduinolibraries.info/ |
 |May 25-26, 2020 |Wrote Initial Lexical analyser|
 
+Now maintaining a Google doc to log continuous changes, you can read it here: https://docs.google.com/document/d/1z10PZ14lkHkTpayLLLew9qie6Hbd-CQ-pehbns72G6M/edit#

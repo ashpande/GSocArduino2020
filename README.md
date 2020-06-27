@@ -15,6 +15,10 @@ scanner.l contains the following tokens:
 - punctuators, operators
 - Anything else is recognised as an error (As of now)
 
+Currently working with #include directives results in messing up, will figure out how to integrate later.
+
+Continous work log here: https://docs.google.com/document/d/1z10PZ14lkHkTpayLLLew9qie6Hbd-CQ-pehbns72G6M/edit?usp=sharing
+
 ## Pull Requests
 
 https://github.com/arduino/ArduinoCore-samd/pull/533

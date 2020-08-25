@@ -23,8 +23,8 @@
 #ifndef WiringPrivate_h
 #define WiringPrivate_h
 
-#include <avr/io.h>
-#include <avr/interrupt.h>
+#include "io.h"
+#include "interrupt.h"
 #include <stdio.h>
 #include <stdarg.h>
 

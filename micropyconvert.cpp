@@ -1,102 +1,127 @@
-#include <sstream>
+//------------------------------------------------------------------------------
+// Micropython-Convert Demonstrates:
+//
+// * How to convert Arduino Sketches to Micropython
+// * How to use AST matchers to find interesting AST nodes.
+// * How to use the Rewriter API to rewrite the source code.
+//
+// Ashutosh Pandey (ashutoshpandey123456@gmail.com)
+// This code is in the public domain
+//------------------------------------------------------------------------------
 #include <string>
-#include "clang/AST/ASTContext.h"
+
 #include "clang/AST/AST.h"
 #include "clang/AST/ASTConsumer.h"
-#include "clang/AST/RecursiveASTVisitor.h"
-#include "clang/Frontend/ASTConsumers.h"
+#include "clang/ASTMatchers/ASTMatchFinder.h"
+#include "clang/ASTMatchers/ASTMatchers.h"
 #include "clang/Frontend/CompilerInstance.h"
 #include "clang/Frontend/FrontendActions.h"
 #include "clang/Rewrite/Core/Rewriter.h"
 #include "clang/Tooling/CommonOptionsParser.h"
 #include "clang/Tooling/Tooling.h"
 #include "llvm/Support/raw_ostream.h"
+
 using namespace std;
 using namespace clang;
+using namespace clang::ast_matchers;
 using namespace clang::driver;
 using namespace clang::tooling;
 
-static llvm::cl::OptionCategory ToolingSampleCategory("Tooling Sample");
+static llvm::cl::OptionCategory MatcherSampleCategory("Matcher Sample");
 
-// By implementing RecursiveASTVisitor, we can specify which AST nodes
-// we're interested in by overriding relevant methods.
-class MyASTVisitor : public RecursiveASTVisitor<MyASTVisitor> {
+class IfStmtHandler : public MatchFinder::MatchCallback {
 public:
-  MyASTVisitor(Rewriter &R) : TheRewriter(R) {}
+  IfStmtHandler(Rewriter &Rewrite) : Rewrite(Rewrite) {}
 
-  bool VisitStmt(Stmt *s) {
-    // Only care about If statements.
-    if (isa<IfStmt>(s)) {
-      IfStmt *IfStatement = cast<IfStmt>(s);
-      Stmt *Then = IfStatement->getThen();
+  virtual void run(const MatchFinder::MatchResult &Result) {
+    // The matched 'if' statement was bound to 'ifStmt'.
+    if (const IfStmt *IfS = Result.Nodes.getNodeAs<clang::IfStmt>("ifStmt")) {
+      const Stmt *Then = IfS->getThen();
+      Rewrite.InsertText(Then->getBeginLoc(), "// the 'if' part\n", true, true);
 
-      TheRewriter.InsertText(Then->getBeginLoc(), "# the 'if' part\n", true,
-                             true);
-
-      Stmt *Else = IfStatement->getElse();
-      if (Else)
-        TheRewriter.InsertText(Else->getBeginLoc(), "# the 'else' part\n",
-                               true, true);
+      if (const Stmt *Else = IfS->getElse()) {
+        Rewrite.InsertText(Else->getBeginLoc(), "// the 'else' part\n", true,
+                           true);
+      }
     }
-
-    return true;
   }
-
-  bool VisitFunctionDecl(FunctionDecl *f) {
-    // Only function definitions (with bodies), not declarations.
-    if (f->hasBody()) {
-      Stmt *FuncBody = f->getBody();
-
-      // Type name as string
-      QualType QT = f->getReturnType();
-      std::string TypeStr = QT.getAsString();
-
-      // Function name
-      DeclarationName DeclName = f->getNameInfo().getName();
-      std::string FuncName = DeclName.getAsString();
-
-      // Add comment before
-      std::stringstream SSBefore;
-      SSBefore << " #  Begin function " << FuncName << " returning " << TypeStr
-               << "\n";
-      SourceLocation ST = f->getSourceRange().getBegin();
-      TheRewriter.InsertText(ST, SSBefore.str(), true, true);
-
-      // And after
-      std::stringstream SSAfter;
-      SSAfter << "\n # End function " << FuncName;
-      ST = FuncBody->getEndLoc().getLocWithOffset(1);
-      TheRewriter.InsertText(ST, SSAfter.str(), true, true);
-    }
-
-    return true;
-  }
-
-
 
 private:
-  Rewriter &TheRewriter;
+  Rewriter &Rewrite;
 };
 
-// Implementation of the ASTConsumer interface for reading an AST produced
-// by the Clang parser.
-class MyASTConsumer : public ASTConsumer {
+class IncrementForLoopHandler : public MatchFinder::MatchCallback {
 public:
-  MyASTConsumer(Rewriter &R) : Visitor(R) {}
+  IncrementForLoopHandler(Rewriter &Rewrite) : Rewrite(Rewrite) {}
 
-  // Override the method that gets called for each parsed top-level
-  // declaration.
-  bool HandleTopLevelDecl(DeclGroupRef DR) override {
-    for (DeclGroupRef::iterator b = DR.begin(), e = DR.end(); b != e; ++b) {
-      // Traverse the declaration using our AST visitor.
-      Visitor.TraverseDecl(*b);
-      (*b)->dump();
-    }
-    return true;
+  virtual void run(const MatchFinder::MatchResult &Result) {
+    const VarDecl *IncVar = Result.Nodes.getNodeAs<VarDecl>("incVarName");
+    Rewrite.InsertText(IncVar->getBeginLoc(), "/* increment */", true, true);
+    Rewrite.ReplaceText(IncVar->getBeginLoc(), "print");
   }
 
 private:
-  MyASTVisitor Visitor;
+  Rewriter &Rewrite;
+};
+
+class pinModeVariableHandler : public MatchFinder::MatchCallback {
+public:
+   pinModeVariableHandler(Rewriter &Rewrite) : Rewrite(Rewrite)  {}
+
+virtual void run(const MatchFinder::MatchResult &Results) {
+    const clang::CallExpr* pm = Results.Nodes.getNodeAs<clang::CallExpr>("pinMode");
+    Rewrite.ReplaceText(pm->getBeginLoc(), "/* machine.pin */");
+  }
+
+private:
+  Rewriter &Rewrite;
+};
+	
+// Implementation of the ASTConsumer interface for reading an AST produced
+// by the Clang parser. It registers a couple of matchers and runs them on
+// the AST.
+class MyASTConsumer : public ASTConsumer {
+public:
+  MyASTConsumer(Rewriter &R) : HandlerForIf(R), HandlerForFor(R), HandlerForpinMode(R) {
+    // Add a simple matcher for finding 'if' statements.
+    Matcher.addMatcher(ifStmt().bind("ifStmt"), &HandlerForIf);
+
+    // Add a complex matcher for finding 'for' loops with an initializer set
+    // to 0, < comparison in the codition and an increment. For example:
+    //
+    //  for (int i = 0; i < N; ++i)
+    Matcher.addMatcher(
+        forStmt(hasLoopInit(declStmt(hasSingleDecl(
+                    varDecl(hasInitializer(integerLiteral(equals(0))))
+                        .bind("initVarName")))),
+                hasIncrement(unaryOperator(
+                    hasOperatorName("++"),
+                    hasUnaryOperand(declRefExpr(to(
+                        varDecl(hasType(isInteger())).bind("incVarName")))))),
+                hasCondition(binaryOperator(
+                    hasOperatorName("<"),
+                    hasLHS(ignoringParenImpCasts(declRefExpr(to(
+                        varDecl(hasType(isInteger())).bind("condVarName"))))),
+                    hasRHS(expr(hasType(isInteger()))))))
+            .bind("forLoop"),
+        &HandlerForFor);
+
+//Add A matcher for PinMode
+
+Matcher.addMatcher(
+	callExpr(isExpansionInMainFile(), hasAncestor(functionDecl(hasName("setup")))).bind("pinMode"), &HandlerForpinMode);
+  }
+
+  void HandleTranslationUnit(ASTContext &Context) override {
+    // Run the matchers when we have the whole TU parsed.
+    Matcher.matchAST(Context);
+  }
+
+private:
+  IfStmtHandler HandlerForIf;
+  IncrementForLoopHandler HandlerForFor;
+  pinModeVariableHandler HandlerForpinMode;
+  MatchFinder Matcher;
 };
 
 // For each source file provided to the tool, a new FrontendAction is created.
@@ -104,22 +129,22 @@ class MyFrontendAction : public ASTFrontendAction {
 public:
   MyFrontendAction() {}
   void EndSourceFileAction() override {
-    SourceManager &SM = TheRewriter.getSourceMgr();
-    llvm::errs() << "** EndSourceFileAction for: "
+   SourceManager &SM = TheRewriter.getSourceMgr();
+   llvm::errs() << "** EndSourceFileAction for: "
                  << SM.getFileEntryForID(SM.getMainFileID())->getName() << "\n";
-
-    // Now emit the rewritten buffer.
-    TheRewriter.getEditBuffer(SM.getMainFileID()).write(llvm::outs());
+//Now emit the Rewritten Buffer
+    TheRewriter.getEditBuffer(TheRewriter.getSourceMgr().getMainFileID())
+        .write(llvm::outs());
 
 std::error_code error_code;
         llvm::raw_fd_ostream outFile("output.txt", error_code, llvm::sys::fs::F_None);
-     TheRewriter.getEditBuffer(SM.getMainFileID()).write(outFile); // --> this will write the result to outFile
+     TheRewriter.getEditBuffer(SM.getMainFileID()).write(outFile); // --> this will write the result>
     outFile.close();
+
   }
 
   std::unique_ptr<ASTConsumer> CreateASTConsumer(CompilerInstance &CI,
                                                  StringRef file) override {
-    llvm::errs() << "** Creating AST consumer for: " << file << "\n";
     TheRewriter.setSourceMgr(CI.getSourceManager(), CI.getLangOpts());
     return std::make_unique<MyASTConsumer>(TheRewriter);
   }
@@ -129,14 +154,8 @@ private:
 };
 
 int main(int argc, const char **argv) {
-  CommonOptionsParser op(argc, argv, ToolingSampleCategory);
+  CommonOptionsParser op(argc, argv, MatcherSampleCategory);
   ClangTool Tool(op.getCompilations(), op.getSourcePathList());
 
-  // ClangTool::run accepts a FrontendActionFactory, which is then used to
-  // create new objects implementing the FrontendAction interface. Here we use
-  // the helper newFrontendActionFactory to create a default factory that will
-  // return a new MyFrontendAction object every time.
-  // To further customize this, we could create our own factory class.
   return Tool.run(newFrontendActionFactory<MyFrontendAction>().get());
 }
-

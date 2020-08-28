@@ -92,7 +92,6 @@ public:
 virtual void run(const MatchFinder::MatchResult &Results) {
     const clang::FunctionDecl* loop = Results.Nodes.getNodeAs<clang::FunctionDecl>("loopexpr");
     Rewrite.RemoveText(loop->getLocation()); 
-    Rewrite.RemoveText(loop->getEndLoc());
     Rewrite.ReplaceText(loop->getBeginLoc(), "While True:");
     Rewrite.ReplaceText(loop->getLocation(), " ");
   }
@@ -133,7 +132,9 @@ private:
   Rewriter &Rewrite;
 };
 
-//Handler for CompoundStatements: Curly Braces are not required in Micropython and Can be removed
+
+//Handler for CompoundStatements: Curly Braces are not required in Micropython and Can be removed. Since  project with improper indentation might become hard to understand
+// it will insert a # (comment statement) before each {}
 
 class compoundStmtHandler : public MatchFinder::MatchCallback {
 public:
@@ -149,13 +150,90 @@ private:
   Rewriter &Rewrite;
 };
 
+//Handler for power expression. converts pow to math.pow
+
+class powerHandler : public MatchFinder::MatchCallback {
+public:
+   powerHandler(Rewriter &Rewrite) : Rewrite(Rewrite)  {}
+
+virtual void run(const MatchFinder::MatchResult &Results) {
+    const clang::Stmt* powfinder = Results.Nodes.getNodeAs<clang::Stmt>("pow");
+    Rewrite.InsertText(powfinder->getBeginLoc(), "math.", true, true);
+  }
+
+private:
+  Rewriter &Rewrite;
+};
+
+//Handler for square root expression. converts sqrt to math.sqrt
+
+class sqrtHandler : public MatchFinder::MatchCallback {
+public:
+   sqrtHandler(Rewriter &Rewrite) : Rewrite(Rewrite)  {}
+
+virtual void run(const MatchFinder::MatchResult &Results) {
+    const clang::Stmt* sqrtfinder = Results.Nodes.getNodeAs<clang::Stmt>("sqrt");
+    Rewrite.InsertText(sqrtfinder->getBeginLoc(), "math.", true, true);
+  }
+
+private:
+  Rewriter &Rewrite;
+};
+
+//Handler for sin expression. converts sin to math.sin
+
+class sinHandler : public MatchFinder::MatchCallback {
+public:
+   sinHandler(Rewriter &Rewrite) : Rewrite(Rewrite)  {}
+
+virtual void run(const MatchFinder::MatchResult &Results) {
+    const clang::Stmt* sinfinder = Results.Nodes.getNodeAs<clang::Stmt>("sin");
+    Rewrite.InsertText(sinfinder->getBeginLoc(), "math.", true, true);
+  }
+
+private:
+  Rewriter &Rewrite;
+};
+
+//Handler for cos expression. converts cos to math.cos
+
+class cosHandler : public MatchFinder::MatchCallback {
+public:
+   cosHandler(Rewriter &Rewrite) : Rewrite(Rewrite)  {}
+
+virtual void run(const MatchFinder::MatchResult &Results) {
+    const clang::Stmt* cosfinder = Results.Nodes.getNodeAs<clang::Stmt>("cos");
+    Rewrite.InsertText(cosfinder->getBeginLoc(), "math.", true, true);
+  }
+
+private:
+  Rewriter &Rewrite;
+};
+
+//Handler for tan expression. converts pow to math.tan
+
+class tanHandler : public MatchFinder::MatchCallback {
+public:
+   tanHandler(Rewriter &Rewrite) : Rewrite(Rewrite)  {}
+
+virtual void run(const MatchFinder::MatchResult &Results) {
+    const clang::Stmt* tanfinder = Results.Nodes.getNodeAs<clang::Stmt>("tan");
+    Rewrite.InsertText(tanfinder->getBeginLoc(), "math.", true, true);
+  }
+
+private:
+  Rewriter &Rewrite;
+};
+
+
 
 // Implementation of the ASTConsumer interface for reading an AST produced
 // by the Clang parser. It registers a couple of matchers and runs them on
 // the AST.
 class MyASTConsumer : public ASTConsumer {
 public:
-  MyASTConsumer(Rewriter &R) : HandlerForIf(R), HandlerForFor(R), HandlerForpinMode(R), HandlerForLoopExpr(R), HandlerForDelay(R), HandlerForSetup(R), HandlerForCompoundStmt(R){
+  MyASTConsumer(Rewriter &R) : HandlerForIf(R), HandlerForFor(R), HandlerForpinMode(R), HandlerForLoopExpr(R), HandlerForDelay(R), HandlerForSetup(R), HandlerForCompoundStmt(R), 
+  HandlerForPower(R), HandlerForSqrt(R), HandlerForSin(R), HandlerForCos(R), HandlerForTan(R) {
     // Add a simple matcher for finding 'if' statements.
     Matcher.addMatcher(ifStmt().bind("ifStmt"), &HandlerForIf);
 
@@ -200,6 +278,28 @@ Matcher.addMatcher(
 //Add A matcher to remove { } braces
 Matcher.addMatcher(
   stmt(isExpansionInMainFile(), compoundStmt()).bind("compoundstmt"), &HandlerForCompoundStmt);
+
+//Add a matcher to convert power to math.pow
+Matcher.addMatcher(
+  stmt(isExpansionInMainFile(), has(declRefExpr(throughUsingDecl(hasName("pow"))))).bind("pow"), &HandlerForPower);
+
+//Add a matcher to convert sqrt to math.sqrt
+Matcher.addMatcher(
+  stmt(isExpansionInMainFile(), has(declRefExpr(throughUsingDecl(hasName("sqrt"))))).bind("sqrt"), &HandlerForSqrt);
+
+//Add a matcher to convert sin to math.sin
+Matcher.addMatcher(
+  stmt(isExpansionInMainFile(), has(declRefExpr(throughUsingDecl(hasName("sin"))))).bind("sin"), &HandlerForSin);
+
+//Add a matcher to convert cos to math.cos
+Matcher.addMatcher(
+  stmt(isExpansionInMainFile(), has(declRefExpr(throughUsingDecl(hasName("cos"))))).bind("cos"), &HandlerForCos);
+
+//Add a matcher to convert tan to math.tan
+Matcher.addMatcher(
+  stmt(isExpansionInMainFile(), has(declRefExpr(throughUsingDecl(hasName("tan"))))).bind("tan"), &HandlerForTan);
+
+
 }
   void HandleTranslationUnit(ASTContext &Context) override {
     // Run the matchers when we have the whole TU parsed.
@@ -214,7 +314,12 @@ private:
   delayHandler HandlerForDelay;
   setupHandler HandlerForSetup;
   compoundStmtHandler HandlerForCompoundStmt;
- 
+  powerHandler HandlerForPower;
+  sqrtHandler HandlerForSqrt;
+  sinHandler HandlerForSin;
+  cosHandler HandlerForCos;
+  tanHandler HandlerForTan;
+
   MatchFinder Matcher;
 };
 

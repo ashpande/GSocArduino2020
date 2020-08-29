@@ -107,8 +107,8 @@ public:
    delayHandler(Rewriter &Rewrite) : Rewrite(Rewrite)  {}
 
 virtual void run(const MatchFinder::MatchResult &Results) {
-    const clang::Stmt* delayfinder = Results.Nodes.getNodeAs<clang::Stmt>("delay");
-    Rewrite.ReplaceText(delayfinder->getBeginLoc(), "time.sleep_ms");
+    const clang::CallExpr* delayfinder = Results.Nodes.getNodeAs<clang::CallExpr>("delay");
+    Rewrite.ReplaceText(delayfinder->getBeginLoc(), "utime.sleep_ms");
   }
 
 private:
@@ -225,7 +225,50 @@ private:
   Rewriter &Rewrite;
 };
 
+//Handler for delay() function: delay() is rewritten as time.sleep_ms
 
+class delayMicrosecondsHandler : public MatchFinder::MatchCallback {
+public:
+   delayMicrosecondsHandler(Rewriter &Rewrite) : Rewrite(Rewrite)  {}
+
+virtual void run(const MatchFinder::MatchResult &Results) {
+    const clang::CallExpr* delayMicrosecondsfinder = Results.Nodes.getNodeAs<clang::CallExpr>("delayMicroseconds");
+    Rewrite.ReplaceText(delayMicrosecondsfinder->getBeginLoc(), "utime.sleep_us");
+  }
+
+private:
+  Rewriter &Rewrite;
+};
+
+//Handler for delay() function: delay() is rewritten as time.sleep_ms
+
+class millisHandler : public MatchFinder::MatchCallback {
+public:
+   millisHandler(Rewriter &Rewrite) : Rewrite(Rewrite)  {}
+
+virtual void run(const MatchFinder::MatchResult &Results) {
+    const clang::CallExpr* millisfinder = Results.Nodes.getNodeAs<clang::CallExpr>("millis");
+    Rewrite.ReplaceText(millisfinder->getBeginLoc(), "utime.ticks_ms");
+  }
+
+private:
+  Rewriter &Rewrite;
+};
+
+//Handler for delay() function: delay() is rewritten as time.sleep_ms
+
+class microsHandler : public MatchFinder::MatchCallback {
+public:
+   microsHandler(Rewriter &Rewrite) : Rewrite(Rewrite)  {}
+
+virtual void run(const MatchFinder::MatchResult &Results) {
+    const clang::CallExpr* microsfinder = Results.Nodes.getNodeAs<clang::CallExpr>("micros");
+    Rewrite.ReplaceText(microsfinder->getBeginLoc(), "utime.ticks_us");
+  }
+
+private:
+  Rewriter &Rewrite;
+};
 
 // Implementation of the ASTConsumer interface for reading an AST produced
 // by the Clang parser. It registers a couple of matchers and runs them on
@@ -233,7 +276,7 @@ private:
 class MyASTConsumer : public ASTConsumer {
 public:
   MyASTConsumer(Rewriter &R) : HandlerForIf(R), HandlerForFor(R), HandlerForpinMode(R), HandlerForLoopExpr(R), HandlerForDelay(R), HandlerForSetup(R), HandlerForCompoundStmt(R), 
-  HandlerForPower(R), HandlerForSqrt(R), HandlerForSin(R), HandlerForCos(R), HandlerForTan(R) {
+  HandlerForPower(R), HandlerForSqrt(R), HandlerForSin(R), HandlerForCos(R), HandlerForTan(R), HandlerForDelayMicroseconds(R), HandlerForMillis(R), HandlerForMicros(R){
     // Add a simple matcher for finding 'if' statements.
     Matcher.addMatcher(ifStmt().bind("ifStmt"), &HandlerForIf);
 
@@ -260,7 +303,7 @@ public:
 //Add A matcher for PinMode
 
 Matcher.addMatcher(
-	callExpr(isExpansionInMainFile(), hasAncestor(functionDecl(hasName("setup")))).bind("pinMode"), &HandlerForpinMode);
+	callExpr(isExpansionInMainFile(), callee(functionDecl(hasName("pinMode")))).bind("pinMode"), &HandlerForpinMode);
 
 //Add A matcher for void_loop function of Arduino
 
@@ -269,7 +312,7 @@ Matcher.addMatcher(
 
  //Add A matcher for delay() function
 Matcher.addMatcher(
-  stmt(isExpansionInMainFile(), callExpr(hasDescendant(integerLiteral()))).bind("delay"), &HandlerForDelay);
+  callExpr(isExpansionInMainFile(), callee(functionDecl(hasName("delay")))).bind("delay"), &HandlerForDelay);
 
  //Add A matcher to delete Void Setup() 
  Matcher.addMatcher(
@@ -299,11 +342,23 @@ Matcher.addMatcher(
 Matcher.addMatcher(
   stmt(isExpansionInMainFile(), has(declRefExpr(throughUsingDecl(hasName("tan"))))).bind("tan"), &HandlerForTan);
 
+//Add a matcher to convert delayMicroseconds() to its Micropython equivalent.
+Matcher.addMatcher(
+  callExpr(isExpansionInMainFile(), callee(functionDecl(hasName("delayMicroseconds")))).bind("delayMicroseconds"), &HandlerForDelayMicroseconds);
 
-}
+//Add a matcher to convert millis() to its Micropython equivalent.
+Matcher.addMatcher(
+  callExpr(isExpansionInMainFile(), callee(functionDecl(hasName("millis")))).bind("millis"), &HandlerForMillis);
+
+//Add a matcher to convert micros() to its Micropython equivalent.
+Matcher.addMatcher(
+  callExpr(isExpansionInMainFile(), callee(functionDecl(hasName("micros")))).bind("micros"), &HandlerForMicros);
+  }
+  
   void HandleTranslationUnit(ASTContext &Context) override {
     // Run the matchers when we have the whole TU parsed.
     Matcher.matchAST(Context);
+
   }
 
 private:
@@ -319,6 +374,9 @@ private:
   sinHandler HandlerForSin;
   cosHandler HandlerForCos;
   tanHandler HandlerForTan;
+  delayMicrosecondsHandler HandlerForDelayMicroseconds;
+  millisHandler HandlerForMillis;
+  microsHandler HandlerForMicros;
 
   MatchFinder Matcher;
 };
